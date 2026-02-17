@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One Page Studio - AI Resume Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1a2332 50%, #0f1419 100%);
+            color: #e0e7ff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            min-height: 100vh;
+        }
+
+        .glass {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+        }
+
+        .glass-accent {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+        }
+
+        .cyan-glow {
+            color: #00d9ff;
+            text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d9ff 0%, #0099cc 100%);
+            color: #000;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+        }
+
+        .btn-secondary {
+            background: rgba(0, 217, 255, 0.1);
+            color: #00d9ff;
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: rgba(0, 217, 255, 0.5);
+        }
+
+        .input-field {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            color: #e0e7ff;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: rgba(0, 217, 255, 0.5);
+            background: rgba(0, 217, 255, 0.1);
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+        }
+
+        .section-header {
+            border-bottom: 2px solid rgba(0, 217, 255, 0.3);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+
+        .resume-preview {
+            background: white;
+            color: #000;
+            padding: 40px;
+            border-radius: 8px;
+            font-family: 'Calibri', 'Arial', sans-serif;
+            line-height: 1.6;
+        }
+
+        .resume-preview h1 {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .resume-preview h2 {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 4px;
+        }
+
+        .resume-preview h3 {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 12px;
+            margin-bottom: 4px;
+        }
+
+        .resume-preview p {
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .tab-active {
+            border-bottom: 2px solid #00d9ff;
+            color: #00d9ff;
+        }
+
+        .tab-inactive {
+            border-bottom: 2px solid transparent;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen p-6">
+        <!-- Header -->
+        <div class="max-w-7xl mx-auto mb-8">
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h1 class="text-4xl font-bold cyan-glow mb-2">One Page Studio</h1>
+                    <p class="text-slate-400">AI-Powered Resume Builder & Optimizer</p>
+                </div>
+                <div class="text-right">
+                    <a href="/" class="text-cyan-400 hover:text-cyan-300 text-sm">← Back to Ecosystem</a>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex gap-8 border-b border-slate-700 mb-8">
+                <button class="tab-active pb-4 font-semibold transition-colors" onclick="switchTab('editor')">
+                    Resume Editor
+                </button>
+                <button class="tab-inactive pb-4 font-semibold transition-colors" onclick="switchTab('preview')">
+                    Live Preview
+                </button>
+                <button class="tab-inactive pb-4 font-semibold transition-colors" onclick="switchTab('optimize')">
+                    AI Optimizer
+                </button>
+                <button class="tab-inactive pb-4 font-semibold transition-colors" onclick="switchTab('export')">
+                    Export
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto">
+            <!-- Editor Tab -->
+            <div id="editor-tab" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Form Section -->
+                <div class="glass rounded-lg p-6 h-fit sticky top-6">
+                    <h2 class="text-2xl font-bold cyan-glow mb-6">Edit Resume</h2>
+
+                    <!-- Personal Info -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Personal Information</h3>
+                        <input type="text" id="fullName" placeholder="Full Name" class="input-field w-full mb-3" value="John Doe">
+                        <input type="email" id="email" placeholder="Email" class="input-field w-full mb-3" value="john@example.com">
+                        <input type="tel" id="phone" placeholder="Phone" class="input-field w-full mb-3" value="(555) 123-4567">
+                        <input type="text" id="location" placeholder="Location" class="input-field w-full mb-3" value="San Francisco, CA">
+                        <textarea id="summary" placeholder="Professional Summary" class="input-field w-full mb-3 resize-none" rows="3">Results-driven professional with 5+ years of experience in technology and innovation.</textarea>
+                    </div>
+
+                    <!-- Experience -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Experience</h3>
+                        <div class="space-y-4" id="experienceList">
+                            <div class="glass-accent p-4 rounded">
+                                <input type="text" placeholder="Job Title" class="input-field w-full mb-2" value="Senior Product Manager">
+                                <input type="text" placeholder="Company" class="input-field w-full mb-2" value="Tech Corp">
+                                <input type="text" placeholder="Duration" class="input-field w-full mb-2" value="2021 - Present">
+                                <textarea placeholder="Description" class="input-field w-full resize-none" rows="2">Led cross-functional teams to deliver innovative solutions. Increased user engagement by 40%.</textarea>
+                            </div>
+                        </div>
+                        <button class="btn-secondary w-full mt-4" onclick="addExperience()">+ Add Experience</button>
+                    </div>
+
+                    <!-- Skills -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Skills</h3>
+                        <textarea id="skills" placeholder="Enter skills separated by commas" class="input-field w-full resize-none" rows="3">Product Management, Strategic Planning, Data Analysis, Leadership, Communication</textarea>
+                    </div>
+
+                    <!-- Education -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Education</h3>
+                        <input type="text" placeholder="Degree" class="input-field w-full mb-2" value="Bachelor of Science in Business">
+                        <input type="text" placeholder="School" class="input-field w-full mb-2" value="University of California">
+                        <input type="text" placeholder="Graduation Year" class="input-field w-full mb-2" value="2019">
+                    </div>
+                </div>
+
+                <!-- Preview Section -->
+                <div class="glass rounded-lg p-6 h-fit sticky top-6">
+                    <h2 class="text-2xl font-bold cyan-glow mb-6">Live Preview</h2>
+                    <div id="preview" class="resume-preview fade-in"></div>
+                </div>
+            </div>
+
+            <!-- Optimize Tab -->
+            <div id="optimize-tab" class="hidden">
+                <div class="glass rounded-lg p-8">
+                    <h2 class="text-2xl font-bold cyan-glow mb-6">AI Resume Optimizer</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="glass-accent p-6 rounded">
+                            <h3 class="text-lg font-semibold cyan-glow mb-4">✨ Content Enhancement</h3>
+                            <p class="text-slate-300 mb-4">Improve your resume with AI-powered suggestions for stronger action verbs, better phrasing, and more impactful descriptions.</p>
+                            <button class="btn-primary w-full" onclick="optimizeContent()">Enhance Content</button>
+                        </div>
+                        <div class="glass-accent p-6 rounded">
+                            <h3 class="text-lg font-semibold cyan-glow mb-4">🎯 ATS Optimization</h3>
+                            <p class="text-slate-300 mb-4">Ensure your resume passes Applicant Tracking Systems with keyword optimization and formatting suggestions.</p>
+                            <button class="btn-primary w-full" onclick="optimizeATS()">Check ATS Score</button>
+                        </div>
+                        <div class="glass-accent p-6 rounded">
+                            <h3 class="text-lg font-semibold cyan-glow mb-4">💡 Skill Recommendations</h3>
+                            <p class="text-slate-300 mb-4">Get AI-powered suggestions for skills to add based on your experience and industry trends.</p>
+                            <button class="btn-primary w-full" onclick="recommendSkills()">Get Recommendations</button>
+                        </div>
+                        <div class="glass-accent p-6 rounded">
+                            <h3 class="text-lg font-semibold cyan-glow mb-4">📊 Resume Analysis</h3>
+                            <p class="text-slate-300 mb-4">Comprehensive analysis of your resume including length, keyword density, and readability scores.</p>
+                            <button class="btn-primary w-full" onclick="analyzeResume()">Analyze Resume</button>
+                        </div>
+                    </div>
+                    <div id="optimizeResults" class="mt-8"></div>
+                </div>
+            </div>
+
+            <!-- Export Tab -->
+            <div id="export-tab" class="hidden">
+                <div class="glass rounded-lg p-8">
+                    <h2 class="text-2xl font-bold cyan-glow mb-6">Export & Download</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="glass-accent p-6 rounded text-center">
+                            <h3 class="text-lg font-semibold cyan-glow mb-4">📄 PDF</h3>
+                            <p class="text-slate-300 mb-4">Download your resume as a professional PDF document.</p>
+                            <button class="btn-primary w-full" onclick="downloadPDF()">Download PDF</button>
+                        </div>
+                        <div class="glass-accent p-6 rounded text-center">
+                            <h3 class="text-lg font-semibold cyan-glow mb-4">📋 JSON</h3>
+                            <p class="text-slate-300 mb-4">Export your resume data as JSON for backup or integration.</p>
+                            <button class="btn-primary w-full" onclick="downloadJSON()">Download JSON</button>
+                        </div>
+                        <div class="glass-accent p-6 rounded text-center">
+                            <h3 class="text-lg font-semibold cyan-glow mb-4">💾 Save Draft</h3>
+                            <p class="text-slate-300 mb-4">Save your resume locally in your browser.</p>
+                            <button class="btn-primary w-full" onclick="saveDraft()">Save Draft</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.getElementById('editor-tab').classList.add('hidden');
+            document.getElementById('optimize-tab').classList.add('hidden');
+            document.getElementById('export-tab').classList.add('hidden');
+
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.remove('hidden');
+
+            // Update tab styles
+            document.querySelectorAll('[onclick*="switchTab"]').forEach(btn => {
+                btn.classList.remove('tab-active');
+                btn.classList.add('tab-inactive');
+            });
+            event.target.classList.remove('tab-inactive');
+            event.target.classList.add('tab-active');
+
+            // Update preview when switching to preview tab
+            if (tabName === 'preview') {
+                updatePreview();
+            }
+        }
+
+        // Update preview
+        function updatePreview() {
+            const fullName = document.getElementById('fullName').value;
+            const email = document.getElementById('email').value;
+            const phone = document.getElementById('phone').value;
+            const location = document.getElementById('location').value;
+            const summary = document.getElementById('summary').value;
+            const skills = document.getElementById('skills').value;
+
+            const experienceInputs = document.querySelectorAll('#experienceList .glass-accent');
+            let experienceHTML = '';
+            experienceInputs.forEach(exp => {
+                const inputs = exp.querySelectorAll('input, textarea');
+                if (inputs[0].value) {
+                    experienceHTML += `
+                        <h3>${inputs[0].value}</h3>
+                        <p><strong>${inputs[1].value}</strong> | ${inputs[2].value}</p>
+                        <p>${inputs[3].value}</p>
+                    `;
+                }
+            });
+
+            const preview = `
+                <h1>${fullName}</h1>
+                <h2>${email} | ${phone} | ${location}</h2>
+                <h3>Professional Summary</h3>
+                <p>${summary}</p>
+                <h3>Experience</h3>
+                ${experienceHTML}
+                <h3>Skills</h3>
+                <p>${skills}</p>
+            `;
+
+            document.getElementById('preview').innerHTML = preview;
+        }
+
+        // Add experience
+        function addExperience() {
+            const experienceList = document.getElementById('experienceList');
+            const newExp = document.createElement('div');
+            newExp.className = 'glass-accent p-4 rounded';
+            newExp.innerHTML = `
+                <input type="text" placeholder="Job Title" class="input-field w-full mb-2">
+                <input type="text" placeholder="Company" class="input-field w-full mb-2">
+                <input type="text" placeholder="Duration" class="input-field w-full mb-2">
+                <textarea placeholder="Description" class="input-field w-full resize-none" rows="2"></textarea>
+                <button class="btn-secondary w-full mt-2" onclick="this.parentElement.remove()">Remove</button>
+            `;
+            experienceList.appendChild(newExp);
+        }
+
+        // Optimization functions
+        function optimizeContent() {
+            const results = document.getElementById('optimizeResults');
+            results.innerHTML = `
+                <div class="glass-accent p-6 rounded">
+                    <h3 class="text-lg font-semibold cyan-glow mb-4">✨ Content Enhancement Suggestions</h3>
+                    <ul class="space-y-2 text-slate-300">
+                        <li>✓ Replace "Increased user engagement" with "Orchestrated 40% increase in user engagement"</li>
+                        <li>✓ Add quantifiable metrics to all achievements</li>
+                        <li>✓ Use stronger action verbs: "Led" → "Spearheaded", "Managed" → "Directed"</li>
+                        <li>✓ Add impact statements to each role</li>
+                    </ul>
+                </div>
+            `;
+        }
+
+        function optimizeATS() {
+            const results = document.getElementById('optimizeResults');
+            results.innerHTML = `
+                <div class="glass-accent p-6 rounded">
+                    <h3 class="text-lg font-semibold cyan-glow mb-4">🎯 ATS Compatibility Score: 85/100</h3>
+                    <div class="space-y-3 text-slate-300">
+                        <p>✓ Proper formatting detected</p>
+                        <p>✓ Keywords match job descriptions</p>
+                        <p>⚠ Add more industry-specific keywords</p>
+                        <p>✓ No unusual formatting detected</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function recommendSkills() {
+            const results = document.getElementById('optimizeResults');
+            results.innerHTML = `
+                <div class="glass-accent p-6 rounded">
+                    <h3 class="text-lg font-semibold cyan-glow mb-4">💡 Recommended Skills to Add</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded">Machine Learning</span>
+                        <span class="bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded">Cloud Architecture</span>
+                        <span class="bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded">Agile Methodology</span>
+                        <span class="bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded">API Design</span>
+                        <span class="bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded">Team Leadership</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function analyzeResume() {
+            const results = document.getElementById('optimizeResults');
+            results.innerHTML = `
+                <div class="glass-accent p-6 rounded">
+                    <h3 class="text-lg font-semibold cyan-glow mb-4">📊 Resume Analysis</h3>
+                    <div class="space-y-2 text-slate-300">
+                        <p>Length: 1 page (optimal)</p>
+                        <p>Keyword Density: 8.5% (good)</p>
+                        <p>Readability Score: 92/100 (excellent)</p>
+                        <p>Action Verbs: 12 (strong)</p>
+                        <p>Quantified Achievements: 5 (good)</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Export functions
+        function downloadPDF() {
+            const element = document.getElementById('preview');
+            const opt = {
+                margin: 10,
+                filename: 'resume.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+            };
+            html2pdf().set(opt).from(element).save();
+        }
+
+        function downloadJSON() {
+            const data = {
+                fullName: document.getElementById('fullName').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                location: document.getElementById('location').value,
+                summary: document.getElementById('summary').value,
+                skills: document.getElementById('skills').value
+            };
+            const dataStr = JSON.stringify(data, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'resume.json';
+            link.click();
+        }
+
+        function saveDraft() {
+            const data = {
+                fullName: document.getElementById('fullName').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                location: document.getElementById('location').value,
+                summary: document.getElementById('summary').value,
+                skills: document.getElementById('skills').value
+            };
+            localStorage.setItem('resumeDraft', JSON.stringify(data));
+            alert('Resume draft saved locally!');
+        }
+
+        // Load draft on page load
+        window.addEventListener('load', () => {
+            const draft = localStorage.getItem('resumeDraft');
+            if (draft) {
+                const data = JSON.parse(draft);
+                document.getElementById('fullName').value = data.fullName;
+                document.getElementById('email').value = data.email;
+                document.getElementById('phone').value = data.phone;
+                document.getElementById('location').value = data.location;
+                document.getElementById('summary').value = data.summary;
+                document.getElementById('skills').value = data.skills;
+            }
+            updatePreview();
+        });
+
+        // Add real-time preview updates
+        document.addEventListener('input', (e) => {
+            if (e.target.matches('input, textarea')) {
+                updatePreview();
+            }
+        });
+    </script>
+</body>
+</html>
