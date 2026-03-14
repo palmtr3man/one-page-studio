@@ -40,53 +40,18 @@ python -m http.server 8000
 ```
 
 ### Deployment
-This is a static HTML/CSS/JavaScript application. Deploy to:
-- **Netlify**: Drag and drop the folder
-- **Vercel**: Connect your Git repository
-- **GitHub Pages**: Push to a `gh-pages` branch
-- **Manus**: Deploy directly from the dashboard
 
-## File Structure
-```
-one-page-studio/
-├── index.html          # Main application
-├── README.md           # This file
-└── .gitignore          # Git ignore rules
-```
+This is a static HTML/CSS/JavaScript application. It is deployed as part of the main `thispagedoesnotexist12345.com` website.
+
+To deploy changes, copy the `index.html` file to the `/Studio` directory of the `thispagedoesnotexist12345` repository and commit the changes. The site is automatically deployed to Netlify from the `master` branch.
 
 ## Technology Stack
+
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Styling**: Tailwind CSS (via CDN)
 - **PDF Export**: html2pdf.js
 - **Storage**: Browser localStorage
 
-## Features Coming Soon
-- Cloud sync with user accounts
-- Multiple resume templates
-- Collaborative editing
-- Interview preparation tools
-- Job matching integration
-- LinkedIn import/export
-
-## Customization
-
-### Theme Colors
-Edit the CSS variables in the `<style>` section:
-- Cyan: `#00d9ff`
-- Background: `#0f172a`
-- Text: `#e0e7ff`
-
-### Resume Preview
-Modify the `resume-preview` CSS class to change the exported resume styling.
-
-## Browser Support
-- Chrome/Edge: ✅ Full support
-- Firefox: ✅ Full support
-- Safari: ✅ Full support
-- Mobile browsers: ✅ Full support
-
-## License
-Part of The Ultimate Journey ecosystem.
-
 ## Support
-For issues or feature requests, contact support@theultimatejourney.com
+
+For issues or feature requests, contact support@thispagedoesnotexist12345.com
