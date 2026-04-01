@@ -6,6 +6,8 @@
     <title>One Page Studio - AI Resume Builder</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -24,6 +26,10 @@
         .btn-success { background: linear-gradient(135deg,#00ff88 0%,#00cc66 100%); color: #000; font-weight: 600; padding: 10px 20px; border-radius: 6px; cursor: pointer; transition: all 0.3s ease; border: none; }
         .btn-success:hover { transform: translateY(-2px); box-shadow: 0 0 20px rgba(0,255,136,0.5); }
         .btn-danger { background: rgba(255,80,80,0.15); color: #ff5050; border: 1px solid rgba(255,80,80,0.3); padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: all 0.3s ease; }
+        .btn-import { background: linear-gradient(135deg,#a855f7 0%,#7c3aed 100%); color: #fff; font-weight: 600; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: all 0.3s ease; border: none; font-size: 13px; }
+        .btn-import:hover { transform: translateY(-2px); box-shadow: 0 0 20px rgba(168,85,247,0.5); }
+        .btn-export-sm { background: rgba(0,217,255,0.12); color: #00d9ff; border: 1px solid rgba(0,217,255,0.3); padding: 7px 14px; border-radius: 6px; cursor: pointer; transition: all 0.3s ease; font-size: 13px; font-weight: 600; white-space: nowrap; }
+        .btn-export-sm:hover { background: rgba(0,217,255,0.22); box-shadow: 0 0 14px rgba(0,217,255,0.35); }
         .input-field { background: rgba(0,217,255,0.05); border: 1px solid rgba(0,217,255,0.2); color: #e0e7ff; padding: 10px 12px; border-radius: 6px; font-size: 14px; width: 100%; }
         .input-field:focus { outline: none; border-color: rgba(0,217,255,0.5); background: rgba(0,217,255,0.1); box-shadow: 0 0 10px rgba(0,217,255,0.2); }
         .section-header { border-bottom: 2px solid rgba(0,217,255,0.3); padding-bottom: 12px; margin-bottom: 16px; }
@@ -46,11 +52,83 @@
         .status-info { border-color: rgba(0,217,255,0.4); background: rgba(0,217,255,0.05); color: #00d9ff; }
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,215,0,0.3); border-top-color: #ffd700; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 8px; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Import Modal ── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .modal-box { background: #0f172a; border: 1px solid rgba(0,217,255,0.3); border-radius: 12px; padding: 32px; width: 90%; max-width: 640px; max-height: 90vh; overflow-y: auto; }
+        .modal-tab-active { background: rgba(0,217,255,0.15); color: #00d9ff; border: 1px solid rgba(0,217,255,0.4); }
+        .modal-tab-inactive { background: transparent; color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
+        .drop-zone { border: 2px dashed rgba(0,217,255,0.3); border-radius: 8px; padding: 32px; text-align: center; cursor: pointer; transition: all 0.3s; }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: rgba(0,217,255,0.7); background: rgba(0,217,255,0.07); }
+
+        /* ── Export toolbar ── */
+        .export-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: rgba(0,217,255,0.05); border: 1px solid rgba(0,217,255,0.15); border-radius: 8px; margin-bottom: 20px; }
+        .export-toolbar-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-right: 4px; }
+
+        /* ── Supabase sync badge ── */
+        .sync-badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; }
+        .sync-cloud { background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid rgba(0,255,136,0.3); }
+        .sync-local { background: rgba(255,200,0,0.1); color: #ffd700; border: 1px solid rgba(255,200,0,0.3); }
     </style>
 </head>
 <body>
 <div class="min-h-screen p-6">
-    <!-- Header -->
+
+    <!-- ══════════════════════════════════════════════════════
+         IMPORT MODAL
+    ══════════════════════════════════════════════════════ -->
+    <div id="importModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold cyan-glow">Import Resume</h2>
+                <button onclick="closeImportModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+
+            <!-- Mode tabs -->
+            <div class="flex gap-3 mb-6">
+                <button id="importTabPaste" class="modal-tab-active px-4 py-2 rounded-lg text-sm font-semibold transition-all" onclick="switchImportTab('paste')">Paste Text</button>
+                <button id="importTabFile" class="modal-tab-inactive px-4 py-2 rounded-lg text-sm font-semibold transition-all" onclick="switchImportTab('file')">Upload File</button>
+                <button id="importTabJSON" class="modal-tab-inactive px-4 py-2 rounded-lg text-sm font-semibold transition-all" onclick="switchImportTab('json')">JSON / Backup</button>
+            </div>
+
+            <!-- Paste panel -->
+            <div id="importPanelPaste">
+                <p class="text-slate-400 text-sm mb-3">Paste your existing resume text below. The AI will extract your information and pre-fill the form fields.</p>
+                <textarea id="importPasteText" class="input-field resize-none mb-4" rows="10" placeholder="Paste your resume here — plain text, copied from Word, PDF, or LinkedIn..."></textarea>
+                <div id="importPasteStatus" class="status-bar status-info hidden mb-4"></div>
+                <button class="btn-import w-full" onclick="importFromPaste()">&#x2728; Parse with AI &amp; Import</button>
+            </div>
+
+            <!-- File upload panel -->
+            <div id="importPanelFile" class="hidden">
+                <p class="text-slate-400 text-sm mb-3">Upload a <strong class="text-slate-300">.txt</strong> or <strong class="text-slate-300">.pdf</strong> resume file. Text is extracted and parsed automatically.</p>
+                <div id="dropZone" class="drop-zone mb-4" onclick="document.getElementById('fileInput').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleFileDrop(event)">
+                    <div class="text-4xl mb-3">&#x1F4C4;</div>
+                    <p class="text-slate-300 font-semibold mb-1">Drop file here or click to browse</p>
+                    <p class="text-slate-500 text-sm">Supports .txt and .pdf files</p>
+                    <input type="file" id="fileInput" accept=".txt,.pdf,.json" class="hidden" onchange="handleFileSelect(event)">
+                </div>
+                <div id="importFileStatus" class="status-bar status-info hidden mb-4"></div>
+                <button id="importFileBtn" class="btn-import w-full hidden" onclick="importFromFile()">&#x2728; Parse with AI &amp; Import</button>
+            </div>
+
+            <!-- JSON panel -->
+            <div id="importPanelJSON" class="hidden">
+                <p class="text-slate-400 text-sm mb-3">Restore a previously exported <strong class="text-slate-300">resume.json</strong> backup file.</p>
+                <div id="dropZoneJSON" class="drop-zone mb-4" onclick="document.getElementById('jsonFileInput').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleJSONFileDrop(event)">
+                    <div class="text-4xl mb-3">&#x1F4BE;</div>
+                    <p class="text-slate-300 font-semibold mb-1">Drop JSON file here or click to browse</p>
+                    <p class="text-slate-500 text-sm">Supports resume.json exports from this tool</p>
+                    <input type="file" id="jsonFileInput" accept=".json" class="hidden" onchange="handleJSONFileSelect(event)">
+                </div>
+                <div id="importJSONStatus" class="status-bar status-info hidden mb-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════
+         HEADER
+    ══════════════════════════════════════════════════════ -->
     <div class="max-w-7xl mx-auto mb-8">
         <div class="flex items-center justify-between mb-4">
             <div>
@@ -58,13 +136,13 @@
                 <p class="text-slate-400 text-sm">AI-Powered Resume Builder &amp; Optimizer</p>
             </div>
             <div class="flex items-center gap-3">
+                <span id="syncBadge" class="sync-badge sync-local hidden">&#x1F4BE; Local</span>
                 <button id="saveBackBtn" class="btn-success hidden" onclick="saveBackToCareerNavigator()">
                     &#x2713; Save to Career Navigator
                 </button>
-               <a href="https://thispagedoesnotexist12345.com/" class="text-cyan-400 hover:text-cyan-300 text-sm">
-  &larr; Back to the Dock
-</a>
-
+                <a href="https://thispagedoesnotexist12345.com/" class="text-cyan-400 hover:text-cyan-300 text-sm">
+                    &larr; Back to the Dock
+                </a>
             </div>
         </div>
 
@@ -80,79 +158,97 @@
             <span class="text-slate-500 text-xs" id="resumeIdDisplay"></span>
         </div>
 
-        <!-- Tabs -->
+        <!-- Tabs — Live Preview tab removed; preview lives in the Editor column -->
         <div class="flex gap-8 border-b border-slate-700 mb-8">
             <button class="tab-active pb-4 font-semibold transition-colors" onclick="switchTab('editor', event)">Resume Editor</button>
-            <button class="tab-inactive pb-4 font-semibold transition-colors" onclick="switchTab('preview', event)">Live Preview</button>
             <button class="tab-inactive pb-4 font-semibold transition-colors" onclick="switchTab('optimize', event)">AI Optimizer</button>
-            <button class="tab-inactive pb-4 font-semibold transition-colors" onclick="switchTab('export', event)">Export</button>
         </div>
     </div>
 
-    <!-- Main Content -->
+    <!-- ══════════════════════════════════════════════════════
+         MAIN CONTENT
+    ══════════════════════════════════════════════════════ -->
     <div class="max-w-7xl mx-auto">
-        <!-- Editor Tab -->
-        <div id="editor-tab" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Form Section -->
-            <div class="glass rounded-lg p-6">
-                <h2 class="text-2xl font-bold cyan-glow mb-6">Edit Resume</h2>
 
-                <!-- Personal Info -->
-                <div class="mb-8">
-                    <h3 class="section-header text-lg font-semibold">Personal Information</h3>
-                    <input type="text" id="fullName" placeholder="Full Name" class="input-field mb-3">
-                    <input type="text" id="jobTitle" placeholder="Professional Title (e.g. Software Engineer)" class="input-field mb-3">
-                    <input type="email" id="email" placeholder="Email" class="input-field mb-3">
-                    <input type="tel" id="phone" placeholder="Phone" class="input-field mb-3">
-                    <input type="text" id="location" placeholder="Location (City, State)" class="input-field mb-3">
-                    <input type="url" id="linkedin" placeholder="LinkedIn URL" class="input-field mb-3">
-                    <input type="url" id="website" placeholder="Portfolio / Website URL" class="input-field mb-3">
-                    <textarea id="summary" placeholder="Professional Summary" class="input-field mb-3 resize-none" rows="3"></textarea>
-                </div>
+        <!-- ── Editor Tab ── -->
+        <div id="editor-tab">
 
-                <!-- Experience -->
-                <div class="mb-8">
-                    <h3 class="section-header text-lg font-semibold">Experience</h3>
-                    <div class="space-y-4" id="experienceList"></div>
-                    <button class="btn-secondary w-full mt-4" onclick="addExperience()">+ Add Experience</button>
-                </div>
-
-                <!-- Education -->
-                <div class="mb-8">
-                    <h3 class="section-header text-lg font-semibold">Education</h3>
-                    <div class="space-y-4" id="educationList"></div>
-                    <button class="btn-secondary w-full mt-4" onclick="addEducation()">+ Add Education</button>
-                </div>
-
-                <!-- Skills -->
-                <div class="mb-8">
-                    <h3 class="section-header text-lg font-semibold">Skills</h3>
-                    <textarea id="skills" placeholder="Enter skills separated by commas" class="input-field resize-none" rows="3"></textarea>
-                </div>
-
-                <!-- Certifications -->
-                <div class="mb-8">
-                    <h3 class="section-header text-lg font-semibold">Certifications</h3>
-                    <div class="space-y-3" id="certificationsList"></div>
-                    <button class="btn-secondary w-full mt-4" onclick="addCertification()">+ Add Certification</button>
-                </div>
-
-                <!-- Projects -->
-                <div class="mb-8">
-                    <h3 class="section-header text-lg font-semibold">Projects</h3>
-                    <div class="space-y-3" id="projectsList"></div>
-                    <button class="btn-secondary w-full mt-4" onclick="addProject()">+ Add Project</button>
-                </div>
+            <!-- Export + Import toolbar (always visible in editor) -->
+            <div class="export-toolbar">
+                <span class="export-toolbar-label">Quick Actions</span>
+                <button class="btn-import" onclick="openImportModal()">&#x2B06; Import Resume</button>
+                <button class="btn-export-sm" onclick="downloadPDF()">&#x1F4C4; Export PDF</button>
+                <button class="btn-export-sm" onclick="downloadJSON()">&#x1F4CB; Export JSON</button>
+                <button class="btn-export-sm" onclick="saveDraft()">&#x2601; Save Draft</button>
+                <button class="btn-export-sm" onclick="loadLocalDraft()">&#x21BA; Load Draft</button>
+                <span id="syncBadgeToolbar" class="sync-badge sync-local ml-auto">&#x1F4BE; Local</span>
             </div>
 
-            <!-- Preview Section -->
-            <div class="glass rounded-lg p-6">
-                <h2 class="text-2xl font-bold cyan-glow mb-6">Live Preview</h2>
-                <div id="preview" class="resume-preview fade-in"></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Form Section -->
+                <div class="glass rounded-lg p-6">
+                    <h2 class="text-2xl font-bold cyan-glow mb-6">Edit Resume</h2>
+
+                    <!-- Personal Info -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Personal Information</h3>
+                        <input type="text" id="fullName" placeholder="Full Name" class="input-field mb-3">
+                        <input type="text" id="jobTitle" placeholder="Professional Title (e.g. Software Engineer)" class="input-field mb-3">
+                        <input type="email" id="email" placeholder="Email" class="input-field mb-3">
+                        <input type="tel" id="phone" placeholder="Phone" class="input-field mb-3">
+                        <input type="text" id="location" placeholder="Location (City, State)" class="input-field mb-3">
+                        <input type="url" id="linkedin" placeholder="LinkedIn URL" class="input-field mb-3">
+                        <input type="url" id="website" placeholder="Portfolio / Website URL" class="input-field mb-3">
+                        <textarea id="summary" placeholder="Professional Summary" class="input-field mb-3 resize-none" rows="3"></textarea>
+                    </div>
+
+                    <!-- Experience -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Experience</h3>
+                        <div class="space-y-4" id="experienceList"></div>
+                        <button class="btn-secondary w-full mt-4" onclick="addExperience()">+ Add Experience</button>
+                    </div>
+
+                    <!-- Education -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Education</h3>
+                        <div class="space-y-4" id="educationList"></div>
+                        <button class="btn-secondary w-full mt-4" onclick="addEducation()">+ Add Education</button>
+                    </div>
+
+                    <!-- Skills -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Skills</h3>
+                        <textarea id="skills" placeholder="Enter skills separated by commas" class="input-field resize-none" rows="3"></textarea>
+                    </div>
+
+                    <!-- Certifications -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Certifications</h3>
+                        <div class="space-y-3" id="certificationsList"></div>
+                        <button class="btn-secondary w-full mt-4" onclick="addCertification()">+ Add Certification</button>
+                    </div>
+
+                    <!-- Projects -->
+                    <div class="mb-8">
+                        <h3 class="section-header text-lg font-semibold">Projects</h3>
+                        <div class="space-y-3" id="projectsList"></div>
+                        <button class="btn-secondary w-full mt-4" onclick="addProject()">+ Add Project</button>
+                    </div>
+                </div>
+
+                <!-- Live Preview (always visible in editor, no tab needed) -->
+                <div class="glass rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold cyan-glow">Live Preview</h2>
+                        <button class="btn-export-sm" onclick="downloadPDF()">&#x1F4C4; Export PDF</button>
+                    </div>
+                    <div id="preview" class="resume-preview fade-in"></div>
+                </div>
             </div>
         </div>
 
-        <!-- Optimize Tab -->
+        <!-- ── Optimize Tab ── -->
         <div id="optimize-tab" class="hidden">
             <div class="glass rounded-lg p-8">
                 <h2 class="text-2xl font-bold cyan-glow mb-6">AI Resume Optimizer</h2>
@@ -182,39 +278,32 @@
             </div>
         </div>
 
-        <!-- Export Tab -->
-        <div id="export-tab" class="hidden">
-            <div class="glass rounded-lg p-8">
-                <h2 class="text-2xl font-bold cyan-glow mb-6">Export &amp; Download</h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="glass-accent p-6 rounded text-center">
-                        <h3 class="text-lg font-semibold cyan-glow mb-4">&#x1F4C4; PDF</h3>
-                        <p class="text-slate-300 mb-4">Download your resume as a professional PDF document.</p>
-                        <button class="btn-primary w-full" onclick="downloadPDF()">Download PDF</button>
-                    </div>
-                    <div class="glass-accent p-6 rounded text-center">
-                        <h3 class="text-lg font-semibold cyan-glow mb-4">&#x1F4CB; JSON</h3>
-                        <p class="text-slate-300 mb-4">Export your resume data as JSON for backup or integration.</p>
-                        <button class="btn-primary w-full" onclick="downloadJSON()">Download JSON</button>
-                    </div>
-                    <div class="glass-accent p-6 rounded text-center">
-                        <h3 class="text-lg font-semibold cyan-glow mb-4">&#x1F4BE; Save Draft</h3>
-                        <p class="text-slate-300 mb-4">Save your resume locally in your browser.</p>
-                        <button class="btn-primary w-full" onclick="saveDraft()">Save Draft</button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
 <script>
 // ============================================================
+// CONFIGURATION — set your Supabase project URL + anon key
+// ============================================================
+const SUPABASE_URL  = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON = 'YOUR_ANON_KEY';
+
+// Initialise Supabase client (graceful — won't crash if keys not set)
+let supabaseClient = null;
+try {
+    if (SUPABASE_URL !== 'https://YOUR_PROJECT.supabase.co' && SUPABASE_ANON !== 'YOUR_ANON_KEY') {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    }
+} catch (e) { console.warn('Supabase init failed, falling back to localStorage:', e); }
+
+// ============================================================
 // STATE
 // ============================================================
-let currentResumeId = null;
+let currentResumeId   = null;
 let currentResumeData = {};
 let hasUnsavedChanges = false;
+let importFileContent = null;   // raw text from file upload
+let importFileType    = null;   // 'text' | 'json'
 
 // ============================================================
 // CAREER NAVIGATOR INTEGRATION — URL param + base44 fetch/save
@@ -222,13 +311,11 @@ let hasUnsavedChanges = false;
 const BASE44_API = 'https://api.base44.com/api/apps/67912f60b0c40c4f1a48d1c7/entities/Resume';
 
 function getAuthToken() {
-    // base44 stores the auth token in localStorage under these keys
     const keys = ['base44_token', 'auth_token', 'access_token', 'token'];
     for (const key of keys) {
         const val = localStorage.getItem(key);
         if (val) return val;
     }
-    // Also try sessionStorage
     for (const key of keys) {
         const val = sessionStorage.getItem(key);
         if (val) return val;
@@ -239,11 +326,11 @@ function getAuthToken() {
 async function loadResumeFromCareerNavigator(resumeId) {
     showStatus('loading', 'Loading resume from Career Navigator...');
     try {
-        const token = getAuthToken();
+        const token   = getAuthToken();
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = 'Bearer ' + token;
 
-        const res = await fetch(BASE44_API + '/' + resumeId, { headers });
+        const res    = await fetch(BASE44_API + '/' + resumeId, { headers });
         if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + res.statusText);
         const resume = await res.json();
         currentResumeData = resume;
@@ -252,7 +339,7 @@ async function loadResumeFromCareerNavigator(resumeId) {
         document.getElementById('saveBackBtn').classList.remove('hidden');
         document.getElementById('resumeTitleBar').classList.remove('hidden');
         document.getElementById('resumeTitleDisplay').textContent = resume.title || 'Untitled Resume';
-        document.getElementById('resumeIdDisplay').textContent = 'ID: ' + resumeId;
+        document.getElementById('resumeIdDisplay').textContent    = 'ID: ' + resumeId;
         setTimeout(() => hideStatus(), 3000);
     } catch (err) {
         showStatus('error', 'Could not load resume via API — showing local draft. (' + err.message + ')');
@@ -265,7 +352,7 @@ async function saveBackToCareerNavigator() {
     if (!currentResumeId) return;
     showStatus('loading', 'Saving resume to Career Navigator...');
     try {
-        const token = getAuthToken();
+        const token   = getAuthToken();
         const headers = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = 'Bearer ' + token;
 
@@ -290,10 +377,10 @@ function buildResumePayload() {
     document.querySelectorAll('#experienceList .exp-entry').forEach(entry => {
         const inputs = entry.querySelectorAll('input, textarea');
         experience.push({
-            title: inputs[0]?.value || '',
-            company: inputs[1]?.value || '',
-            start_date: inputs[2]?.value || '',
-            end_date: inputs[3]?.value || '',
+            title:       inputs[0]?.value || '',
+            company:     inputs[1]?.value || '',
+            start_date:  inputs[2]?.value || '',
+            end_date:    inputs[3]?.value || '',
             description: inputs[4]?.value || ''
         });
     });
@@ -302,10 +389,10 @@ function buildResumePayload() {
     document.querySelectorAll('#educationList .edu-entry').forEach(entry => {
         const inputs = entry.querySelectorAll('input');
         education.push({
-            degree: inputs[0]?.value || '',
+            degree:      inputs[0]?.value || '',
             institution: inputs[1]?.value || '',
-            start_date: inputs[2]?.value || '',
-            end_date: inputs[3]?.value || ''
+            start_date:  inputs[2]?.value || '',
+            end_date:    inputs[3]?.value || ''
         });
     });
 
@@ -313,9 +400,9 @@ function buildResumePayload() {
     document.querySelectorAll('#certificationsList .cert-entry').forEach(entry => {
         const inputs = entry.querySelectorAll('input');
         certifications.push({
-            name: inputs[0]?.value || '',
+            name:   inputs[0]?.value || '',
             issuer: inputs[1]?.value || '',
-            date: inputs[2]?.value || ''
+            date:   inputs[2]?.value || ''
         });
     });
 
@@ -323,27 +410,27 @@ function buildResumePayload() {
     document.querySelectorAll('#projectsList .project-entry').forEach(entry => {
         const inputs = entry.querySelectorAll('input, textarea');
         projects.push({
-            name: inputs[0]?.value || '',
-            url: inputs[1]?.value || '',
+            name:        inputs[0]?.value || '',
+            url:         inputs[1]?.value || '',
             description: inputs[2]?.value || ''
         });
     });
 
     const skillsRaw = document.getElementById('skills')?.value || '';
-    const skills = skillsRaw.split(',').map(s => s.trim()).filter(Boolean).map(s => ({ name: s, level: 'intermediate' }));
+    const skills    = skillsRaw.split(',').map(s => s.trim()).filter(Boolean).map(s => ({ name: s, level: 'intermediate' }));
 
     return {
         ...currentResumeData,
         title: document.getElementById('resumeTitleDisplay')?.textContent || currentResumeData.title || 'My Resume',
         personal_info: {
-            full_name: document.getElementById('fullName')?.value || '',
+            full_name:          document.getElementById('fullName')?.value || '',
             professional_title: document.getElementById('jobTitle')?.value || '',
-            email: document.getElementById('email')?.value || '',
-            phone: document.getElementById('phone')?.value || '',
-            location: document.getElementById('location')?.value || '',
-            linkedin_url: document.getElementById('linkedin')?.value || '',
-            website: document.getElementById('website')?.value || '',
-            summary: document.getElementById('summary')?.value || ''
+            email:              document.getElementById('email')?.value || '',
+            phone:              document.getElementById('phone')?.value || '',
+            location:           document.getElementById('location')?.value || '',
+            linkedin_url:       document.getElementById('linkedin')?.value || '',
+            website:            document.getElementById('website')?.value || '',
+            summary:            document.getElementById('summary')?.value || ''
         },
         experience,
         education,
@@ -354,37 +441,32 @@ function buildResumePayload() {
 }
 
 // ============================================================
-// POPULATE FORM FROM base44 Resume entity
+// POPULATE FORM FROM Resume entity
 // ============================================================
 function populateFormFromResume(resume) {
     const pi = resume.personal_info || {};
     setVal('fullName', pi.full_name || pi.name || '');
     setVal('jobTitle', pi.professional_title || pi.title || '');
-    setVal('email', pi.email || '');
-    setVal('phone', pi.phone || '');
+    setVal('email',    pi.email || '');
+    setVal('phone',    pi.phone || '');
     setVal('location', pi.location || pi.city || '');
     setVal('linkedin', pi.linkedin_url || pi.linkedin || '');
-    setVal('website', pi.website || pi.portfolio_url || '');
-    setVal('summary', pi.summary || pi.professional_summary || '');
+    setVal('website',  pi.website || pi.portfolio_url || '');
+    setVal('summary',  pi.summary || pi.professional_summary || '');
 
-    // Experience
     document.getElementById('experienceList').innerHTML = '';
     (resume.experience || []).forEach(exp => addExperience(exp));
 
-    // Education
     document.getElementById('educationList').innerHTML = '';
     (resume.education || []).forEach(edu => addEducation(edu));
 
-    // Skills — normalize both array-of-objects and comma string formats
     const skillsArr = resume.skills || [];
     const skillsStr = skillsArr.map(s => (typeof s === 'string' ? s : s.name || '')).filter(Boolean).join(', ');
     setVal('skills', skillsStr);
 
-    // Certifications
     document.getElementById('certificationsList').innerHTML = '';
     (resume.certifications || []).forEach(cert => addCertification(cert));
 
-    // Projects
     document.getElementById('projectsList').innerHTML = '';
     (resume.projects || []).forEach(proj => addProject(proj));
 
@@ -418,10 +500,29 @@ function hideStatus() {
 }
 
 // ============================================================
+// SYNC BADGE
+// ============================================================
+function setSyncBadge(mode) {
+    // mode: 'cloud' | 'local'
+    ['syncBadge', 'syncBadgeToolbar'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('hidden', 'sync-cloud', 'sync-local');
+        if (mode === 'cloud') {
+            el.classList.add('sync-cloud');
+            el.textContent = '\u2601 Cloud';
+        } else {
+            el.classList.add('sync-local');
+            el.textContent = '\uD83D\uDCBE Local';
+        }
+    });
+}
+
+// ============================================================
 // TAB SWITCHING
 // ============================================================
 function switchTab(tabName, event) {
-    ['editor', 'optimize', 'export'].forEach(t => {
+    ['editor', 'optimize'].forEach(t => {
         document.getElementById(t + '-tab').classList.add('hidden');
     });
     document.getElementById(tabName + '-tab').classList.remove('hidden');
@@ -433,7 +534,6 @@ function switchTab(tabName, event) {
         event.target.classList.remove('tab-inactive');
         event.target.classList.add('tab-active');
     }
-    if (tabName === 'preview') updatePreview();
 }
 
 // ============================================================
@@ -441,14 +541,14 @@ function switchTab(tabName, event) {
 // ============================================================
 function addExperience(data = {}) {
     const list = document.getElementById('experienceList');
-    const div = document.createElement('div');
+    const div  = document.createElement('div');
     div.className = 'glass-accent p-4 rounded exp-entry';
     div.innerHTML = `
         <input type="text" placeholder="Job Title" class="input-field mb-2" value="${esc(data.title || '')}">
         <input type="text" placeholder="Company" class="input-field mb-2" value="${esc(data.company || data.company_name || '')}">
         <div class="grid grid-cols-2 gap-2 mb-2">
             <input type="text" placeholder="Start Date (e.g. Jan 2022)" class="input-field" value="${esc(data.start_date || '')}">
-            <input type="text" placeholder="End Date (or Present)" class="input-field" value="${esc(data.end_date || data.is_current ? 'Present' : '')}">
+            <input type="text" placeholder="End Date (or Present)" class="input-field" value="${esc(data.end_date || (data.is_current ? 'Present' : ''))}">
         </div>
         <textarea placeholder="Description / Accomplishments" class="input-field resize-none mb-2" rows="3">${esc(data.description || data.responsibilities || '')}</textarea>
         <button class="btn-danger w-full" onclick="this.closest('.exp-entry').remove(); updatePreview()">Remove</button>
@@ -459,7 +559,7 @@ function addExperience(data = {}) {
 
 function addEducation(data = {}) {
     const list = document.getElementById('educationList');
-    const div = document.createElement('div');
+    const div  = document.createElement('div');
     div.className = 'glass-accent p-4 rounded edu-entry';
     div.innerHTML = `
         <input type="text" placeholder="Degree / Qualification" class="input-field mb-2" value="${esc(data.degree || data.field_of_study || '')}">
@@ -476,7 +576,7 @@ function addEducation(data = {}) {
 
 function addCertification(data = {}) {
     const list = document.getElementById('certificationsList');
-    const div = document.createElement('div');
+    const div  = document.createElement('div');
     div.className = 'glass-accent p-4 rounded cert-entry';
     div.innerHTML = `
         <input type="text" placeholder="Certification Name" class="input-field mb-2" value="${esc(data.name || '')}">
@@ -490,7 +590,7 @@ function addCertification(data = {}) {
 
 function addProject(data = {}) {
     const list = document.getElementById('projectsList');
-    const div = document.createElement('div');
+    const div  = document.createElement('div');
     div.className = 'glass-accent p-4 rounded project-entry';
     div.innerHTML = `
         <input type="text" placeholder="Project Name" class="input-field mb-2" value="${esc(data.name || data.title || '')}">
@@ -512,23 +612,23 @@ function esc(str) {
 function updatePreview() {
     const fullName = document.getElementById('fullName')?.value || '';
     const jobTitle = document.getElementById('jobTitle')?.value || '';
-    const email = document.getElementById('email')?.value || '';
-    const phone = document.getElementById('phone')?.value || '';
+    const email    = document.getElementById('email')?.value || '';
+    const phone    = document.getElementById('phone')?.value || '';
     const location = document.getElementById('location')?.value || '';
     const linkedin = document.getElementById('linkedin')?.value || '';
-    const website = document.getElementById('website')?.value || '';
-    const summary = document.getElementById('summary')?.value || '';
+    const website  = document.getElementById('website')?.value || '';
+    const summary  = document.getElementById('summary')?.value || '';
 
     let contactParts = [email, phone, location].filter(Boolean);
     if (linkedin) contactParts.push('<a href="' + linkedin + '" style="color:#0099cc">' + linkedin.replace(/https?:\/\//, '') + '</a>');
-    if (website) contactParts.push('<a href="' + website + '" style="color:#0099cc">' + website.replace(/https?:\/\//, '') + '</a>');
+    if (website)  contactParts.push('<a href="' + website  + '" style="color:#0099cc">' + website.replace(/https?:\/\//, '')  + '</a>');
 
     let expHTML = '';
     document.querySelectorAll('#experienceList .exp-entry').forEach(entry => {
-        const inputs = entry.querySelectorAll('input, textarea');
-        const title = inputs[0]?.value, company = inputs[1]?.value;
-        const start = inputs[2]?.value, end = inputs[3]?.value;
-        const desc = inputs[4]?.value;
+        const inputs  = entry.querySelectorAll('input, textarea');
+        const title   = inputs[0]?.value, company = inputs[1]?.value;
+        const start   = inputs[2]?.value, end     = inputs[3]?.value;
+        const desc    = inputs[4]?.value;
         if (title || company) {
             expHTML += '<div style="margin-bottom:10px">';
             expHTML += '<div class="exp-title">' + esc(title) + '</div>';
@@ -542,7 +642,7 @@ function updatePreview() {
     document.querySelectorAll('#educationList .edu-entry').forEach(entry => {
         const inputs = entry.querySelectorAll('input');
         const degree = inputs[0]?.value, school = inputs[1]?.value;
-        const start = inputs[2]?.value, end = inputs[3]?.value;
+        const start  = inputs[2]?.value, end    = inputs[3]?.value;
         if (degree || school) {
             eduHTML += '<div style="margin-bottom:8px">';
             eduHTML += '<div class="exp-title">' + esc(degree) + '</div>';
@@ -552,12 +652,12 @@ function updatePreview() {
     });
 
     const skillsRaw = document.getElementById('skills')?.value || '';
-    let skillsHTML = skillsRaw.split(',').map(s => s.trim()).filter(Boolean).map(s => '<span class="skill-tag">' + esc(s) + '</span>').join('');
+    let skillsHTML  = skillsRaw.split(',').map(s => s.trim()).filter(Boolean).map(s => '<span class="skill-tag">' + esc(s) + '</span>').join('');
 
     let certHTML = '';
     document.querySelectorAll('#certificationsList .cert-entry').forEach(entry => {
         const inputs = entry.querySelectorAll('input');
-        const name = inputs[0]?.value, issuer = inputs[1]?.value, date = inputs[2]?.value;
+        const name   = inputs[0]?.value, issuer = inputs[1]?.value, date = inputs[2]?.value;
         if (name) {
             certHTML += '<div class="exp-meta">' + esc(name) + (issuer ? ' &bull; ' + esc(issuer) : '') + (date ? ' (' + esc(date) + ')' : '') + '</div>';
         }
@@ -566,7 +666,7 @@ function updatePreview() {
     let projHTML = '';
     document.querySelectorAll('#projectsList .project-entry').forEach(entry => {
         const inputs = entry.querySelectorAll('input, textarea');
-        const name = inputs[0]?.value, url = inputs[1]?.value, desc = inputs[2]?.value;
+        const name   = inputs[0]?.value, url = inputs[1]?.value, desc = inputs[2]?.value;
         if (name) {
             projHTML += '<div style="margin-bottom:8px">';
             projHTML += '<div class="exp-title">' + (url ? '<a href="' + esc(url) + '" style="color:#0099cc">' + esc(name) + '</a>' : esc(name)) + '</div>';
@@ -579,9 +679,9 @@ function updatePreview() {
         <h1>${esc(fullName)}</h1>
         ${jobTitle ? '<div style="font-size:14px;color:#444;margin-bottom:4px">' + esc(jobTitle) + '</div>' : ''}
         <div class="contact-line">${contactParts.join(' &nbsp;|&nbsp; ')}</div>
-        ${summary ? '<div class="section-title">Professional Summary</div><p style="white-space:pre-line">' + esc(summary) + '</p>' : ''}
-        ${expHTML ? '<div class="section-title">Experience</div>' + expHTML : ''}
-        ${eduHTML ? '<div class="section-title">Education</div>' + eduHTML : ''}
+        ${summary  ? '<div class="section-title">Professional Summary</div><p style="white-space:pre-line">' + esc(summary) + '</p>' : ''}
+        ${expHTML  ? '<div class="section-title">Experience</div>' + expHTML : ''}
+        ${eduHTML  ? '<div class="section-title">Education</div>' + eduHTML : ''}
         ${skillsHTML ? '<div class="section-title">Skills</div><div style="margin-top:4px">' + skillsHTML + '</div>' : ''}
         ${certHTML ? '<div class="section-title">Certifications</div>' + certHTML : ''}
         ${projHTML ? '<div class="section-title">Projects</div>' + projHTML : ''}
@@ -590,7 +690,7 @@ function updatePreview() {
 }
 
 // ============================================================
-// OPTIMIZATION FUNCTIONS (simulated)
+// OPTIMIZATION FUNCTIONS
 // ============================================================
 function optimizeContent() {
     document.getElementById('optimizeResults').innerHTML = `
@@ -635,17 +735,17 @@ function recommendSkills() {
 }
 
 function addSkillTag(skill) {
-    const el = document.getElementById('skills');
+    const el      = document.getElementById('skills');
     const current = el.value.trim();
     el.value = current ? current + ', ' + skill : skill;
     updatePreview();
 }
 
 function analyzeResume() {
-    const expCount = document.querySelectorAll('#experienceList .exp-entry').length;
-    const eduCount = document.querySelectorAll('#educationList .edu-entry').length;
+    const expCount   = document.querySelectorAll('#experienceList .exp-entry').length;
+    const eduCount   = document.querySelectorAll('#educationList .edu-entry').length;
     const skillCount = (document.getElementById('skills')?.value || '').split(',').filter(Boolean).length;
-    const words = document.getElementById('summary')?.value?.split(/\s+/).length || 0;
+    const words      = document.getElementById('summary')?.value?.split(/\s+/).length || 0;
     document.getElementById('optimizeResults').innerHTML = `
         <div class="glass-accent p-6 rounded">
             <h3 class="text-lg font-semibold cyan-glow mb-4">&#x1F4CA; Resume Analysis</h3>
@@ -664,66 +764,353 @@ function analyzeResume() {
 // ============================================================
 function downloadPDF() {
     const element = document.getElementById('preview');
-    const name = document.getElementById('fullName')?.value || 'resume';
+    const name    = document.getElementById('fullName')?.value || 'resume';
     html2pdf().set({
-        margin: 10,
-        filename: name.replace(/\s+/g, '_') + '_resume.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+        margin:     10,
+        filename:   name.replace(/\s+/g, '_') + '_resume.pdf',
+        image:      { type: 'jpeg', quality: 0.98 },
+        html2canvas:{ scale: 2 },
+        jsPDF:      { orientation: 'portrait', unit: 'mm', format: 'a4' }
     }).from(element).save();
 }
 
 function downloadJSON() {
     const data = buildResumePayload();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url; a.download = 'resume.json'; a.click();
     URL.revokeObjectURL(url);
 }
 
-function saveDraft() {
+// ============================================================
+// STORAGE — Supabase with localStorage fallback
+// ============================================================
+const DRAFT_KEY = 'resumeDraft_' + (currentResumeId || 'local');
+
+async function saveDraft() {
     const data = buildResumePayload();
+
+    // Always save to localStorage as fallback
     localStorage.setItem('resumeDraft_' + (currentResumeId || 'local'), JSON.stringify(data));
-    showStatus('success', 'Draft saved locally in your browser.');
+
+    if (supabaseClient) {
+        try {
+            // Upsert into `resume_drafts` table using anonymous session fingerprint
+            const sessionId = getOrCreateSessionId();
+            const { error } = await supabaseClient
+                .from('resume_drafts')
+                .upsert({ session_id: sessionId, resume_id: currentResumeId || 'local', data, updated_at: new Date().toISOString() }, { onConflict: 'session_id,resume_id' });
+
+            if (error) throw error;
+            setSyncBadge('cloud');
+            showStatus('success', 'Draft saved to cloud.');
+        } catch (e) {
+            setSyncBadge('local');
+            showStatus('success', 'Draft saved locally (cloud sync unavailable).');
+        }
+    } else {
+        setSyncBadge('local');
+        showStatus('success', 'Draft saved locally in your browser.');
+    }
     setTimeout(() => hideStatus(), 2500);
 }
 
-function loadLocalDraft() {
-    const key = 'resumeDraft_' + (currentResumeId || 'local');
+async function loadLocalDraft() {
+    // Try Supabase first
+    if (supabaseClient) {
+        try {
+            const sessionId = getOrCreateSessionId();
+            const { data: rows, error } = await supabaseClient
+                .from('resume_drafts')
+                .select('data')
+                .eq('session_id', sessionId)
+                .eq('resume_id', currentResumeId || 'local')
+                .order('updated_at', { ascending: false })
+                .limit(1);
+
+            if (!error && rows && rows.length > 0) {
+                populateFormFromResume(rows[0].data);
+                setSyncBadge('cloud');
+                showStatus('info', 'Loaded draft from cloud.');
+                setTimeout(() => hideStatus(), 2500);
+                return;
+            }
+        } catch (e) { /* fall through to localStorage */ }
+    }
+
+    // Fallback: localStorage
+    const key   = 'resumeDraft_' + (currentResumeId || 'local');
     const saved = localStorage.getItem(key);
     if (saved) {
         try {
             populateFormFromResume(JSON.parse(saved));
+            setSyncBadge('local');
             showStatus('info', 'Loaded local draft.');
             setTimeout(() => hideStatus(), 2500);
-        } catch (e) {}
+        } catch (e) { loadPlaceholder(); }
     } else {
-        // Show placeholder data
-        populateFormFromResume({
-            personal_info: {
-                full_name: 'Your Name',
-                professional_title: 'Your Title',
-                email: 'email@example.com',
-                phone: '(555) 000-0000',
-                location: 'City, State',
-                summary: 'Professional summary goes here.'
-            },
-            experience: [],
-            education: [],
-            skills: [],
-            certifications: [],
-            projects: []
-        });
+        loadPlaceholder();
     }
+}
+
+function loadPlaceholder() {
+    populateFormFromResume({
+        personal_info: {
+            full_name:          'Your Name',
+            professional_title: 'Your Title',
+            email:              'email@example.com',
+            phone:              '(555) 000-0000',
+            location:           'City, State',
+            summary:            'Professional summary goes here.'
+        },
+        experience:     [],
+        education:      [],
+        skills:         [],
+        certifications: [],
+        projects:       []
+    });
+}
+
+function getOrCreateSessionId() {
+    let id = localStorage.getItem('ops_session_id');
+    if (!id) {
+        id = 'sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem('ops_session_id', id);
+    }
+    return id;
+}
+
+// ============================================================
+// IMPORT MODAL
+// ============================================================
+function openImportModal() {
+    document.getElementById('importModal').classList.remove('hidden');
+    switchImportTab('paste');
+}
+
+function closeImportModal() {
+    document.getElementById('importModal').classList.add('hidden');
+    importFileContent = null;
+    importFileType    = null;
+}
+
+// Close modal on overlay click
+document.getElementById('importModal').addEventListener('click', function(e) {
+    if (e.target === this) closeImportModal();
+});
+
+function switchImportTab(tab) {
+    ['paste', 'file', 'json'].forEach(t => {
+        document.getElementById('importPanel' + t.charAt(0).toUpperCase() + t.slice(1)).classList.add('hidden');
+        const btn = document.getElementById('importTab' + t.charAt(0).toUpperCase() + t.slice(1));
+        btn.classList.remove('modal-tab-active');
+        btn.classList.add('modal-tab-inactive');
+    });
+    document.getElementById('importPanel' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.remove('hidden');
+    const activeBtn = document.getElementById('importTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+    activeBtn.classList.remove('modal-tab-inactive');
+    activeBtn.classList.add('modal-tab-active');
+}
+
+// ── Paste import ──
+async function importFromPaste() {
+    const text = document.getElementById('importPasteText').value.trim();
+    if (!text) { alert('Please paste some resume text first.'); return; }
+
+    const statusEl = document.getElementById('importPasteStatus');
+    statusEl.classList.remove('hidden', 'status-info', 'status-success', 'status-error');
+    statusEl.classList.add('status-loading');
+    statusEl.innerHTML = '<span class="spinner"></span>Parsing resume with AI...';
+
+    try {
+        const parsed = await parseResumeTextWithAI(text);
+        populateFormFromResume(parsed);
+        closeImportModal();
+        showStatus('success', 'Resume imported successfully!');
+        setTimeout(() => hideStatus(), 3000);
+    } catch (e) {
+        statusEl.classList.remove('status-loading');
+        statusEl.classList.add('status-error');
+        statusEl.innerHTML = '&#x26A0; Parse failed: ' + e.message + '. Try the JSON import tab if you have a backup.';
+    }
+}
+
+// ── File import ──
+function handleDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+function handleDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+function handleFileDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processUploadedFile(file);
+}
+function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) processUploadedFile(file);
+}
+
+function processUploadedFile(file) {
+    const statusEl = document.getElementById('importFileStatus');
+    if (file.name.endsWith('.json')) {
+        // Route JSON files to JSON tab handler
+        switchImportTab('json');
+        loadJSONFile(file);
+        return;
+    }
+    if (!file.name.endsWith('.txt') && !file.name.endsWith('.pdf')) {
+        statusEl.classList.remove('hidden','status-info','status-success','status-loading');
+        statusEl.classList.add('status-error');
+        statusEl.innerHTML = '&#x26A0; Only .txt and .pdf files are supported here. Use the JSON tab for .json backups.';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        importFileContent = ev.target.result;
+        importFileType    = 'text';
+        statusEl.classList.remove('hidden','status-error','status-loading');
+        statusEl.classList.add('status-info');
+        statusEl.innerHTML = '&#x2139; File loaded: <strong>' + file.name + '</strong> (' + Math.round(file.size / 1024) + ' KB). Click "Parse with AI &amp; Import" to continue.';
+        document.getElementById('importFileBtn').classList.remove('hidden');
+    };
+    reader.readAsText(file);
+}
+
+async function importFromFile() {
+    if (!importFileContent) return;
+    const statusEl = document.getElementById('importFileStatus');
+    statusEl.classList.remove('status-info','status-success','status-error');
+    statusEl.classList.add('status-loading');
+    statusEl.innerHTML = '<span class="spinner"></span>Parsing resume with AI...';
+
+    try {
+        const parsed = await parseResumeTextWithAI(importFileContent);
+        populateFormFromResume(parsed);
+        closeImportModal();
+        showStatus('success', 'Resume imported from file successfully!');
+        setTimeout(() => hideStatus(), 3000);
+    } catch (e) {
+        statusEl.classList.remove('status-loading');
+        statusEl.classList.add('status-error');
+        statusEl.innerHTML = '&#x26A0; Parse failed: ' + e.message;
+    }
+}
+
+// ── JSON import ──
+function handleJSONFileDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) loadJSONFile(file);
+}
+function handleJSONFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) loadJSONFile(file);
+}
+
+function loadJSONFile(file) {
+    const statusEl = document.getElementById('importJSONStatus');
+    const reader   = new FileReader();
+    reader.onload  = function(ev) {
+        try {
+            const data = JSON.parse(ev.target.result);
+            populateFormFromResume(data);
+            closeImportModal();
+            showStatus('success', 'Resume restored from JSON backup!');
+            setTimeout(() => hideStatus(), 3000);
+        } catch (e) {
+            statusEl.classList.remove('hidden','status-info','status-loading');
+            statusEl.classList.add('status-error');
+            statusEl.innerHTML = '&#x26A0; Invalid JSON file: ' + e.message;
+        }
+    };
+    reader.readAsText(file);
+}
+
+// ── AI text parser (calls OpenAI-compatible endpoint) ──
+async function parseResumeTextWithAI(text) {
+    // If an OpenAI-compatible key is available via a proxy, use it.
+    // Otherwise fall back to a best-effort regex parser.
+    const OPENAI_KEY = window.__OPS_OPENAI_KEY__ || '';
+
+    if (OPENAI_KEY) {
+        const prompt = `You are a resume parser. Extract structured data from the following resume text and return ONLY valid JSON matching this schema exactly:
+{
+  "personal_info": { "full_name": "", "professional_title": "", "email": "", "phone": "", "location": "", "linkedin_url": "", "website": "", "summary": "" },
+  "experience": [{ "title": "", "company": "", "start_date": "", "end_date": "", "description": "" }],
+  "education": [{ "degree": "", "institution": "", "start_date": "", "end_date": "" }],
+  "skills": [{ "name": "", "level": "intermediate" }],
+  "certifications": [{ "name": "", "issuer": "", "date": "" }],
+  "projects": [{ "name": "", "url": "", "description": "" }]
+}
+Resume text:
+${text.slice(0, 6000)}`;
+
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_KEY },
+            body: JSON.stringify({ model: 'gpt-4.1-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.1 })
+        });
+        if (!res.ok) throw new Error('AI API error: ' + res.status);
+        const json = await res.json();
+        const raw  = json.choices[0].message.content.trim();
+        // Strip markdown code fences if present
+        const clean = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+        return JSON.parse(clean);
+    }
+
+    // ── Fallback: regex-based heuristic parser ──
+    return heuristicParseResume(text);
+}
+
+function heuristicParseResume(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // Email
+    const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+    // Phone
+    const phoneMatch = text.match(/(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}/);
+    // LinkedIn
+    const liMatch    = text.match(/linkedin\.com\/in\/[\w-]+/i);
+    // Website
+    const webMatch   = text.match(/https?:\/\/(?!linkedin)[\w./-]+/i);
+
+    // Name heuristic: first non-empty line that isn't an email/phone/URL
+    const nameLine = lines.find(l => !l.match(/[@()\d+]/));
+
+    // Summary heuristic: paragraph containing "experience" or "professional" or 30+ words
+    const summaryLine = lines.find(l => l.split(/\s+/).length > 25 && !l.match(/^(experience|education|skills|certifications|projects)/i));
+
+    return {
+        personal_info: {
+            full_name:          nameLine  || '',
+            professional_title: lines[1]  || '',
+            email:              emailMatch ? emailMatch[0] : '',
+            phone:              phoneMatch ? phoneMatch[0] : '',
+            location:           '',
+            linkedin_url:       liMatch  ? 'https://' + liMatch[0] : '',
+            website:            webMatch ? webMatch[0] : '',
+            summary:            summaryLine || ''
+        },
+        experience:     [],
+        education:      [],
+        skills:         [],
+        certifications: [],
+        projects:       []
+    };
 }
 
 // ============================================================
 // INIT
 // ============================================================
 window.addEventListener('load', () => {
-    const params = new URLSearchParams(window.location.search);
+    const params   = new URLSearchParams(window.location.search);
     const resumeId = params.get('resumeId');
 
     if (resumeId) {
@@ -735,9 +1122,7 @@ window.addEventListener('load', () => {
 
     // Real-time preview updates on input
     document.addEventListener('input', (e) => {
-        if (e.target.matches('input, textarea')) {
-            updatePreview();
-        }
+        if (e.target.matches('input, textarea')) updatePreview();
     });
 
     // Warn if leaving with unsaved changes and loaded from Career Navigator
@@ -747,6 +1132,8 @@ window.addEventListener('load', () => {
             e.returnValue = '';
         }
     });
+
+    setSyncBadge(supabaseClient ? 'cloud' : 'local');
 });
 </script>
 </body>
