@@ -69,6 +69,22 @@
         .sync-badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; }
         .sync-cloud { background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid rgba(0,255,136,0.3); }
         .sync-local { background: rgba(255,200,0,0.1); color: #ffd700; border: 1px solid rgba(255,200,0,0.3); }
+
+        /* ── Passport context banner ── */
+        .passport-banner { background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(0,217,255,0.08) 100%); border: 1px solid rgba(99,102,241,0.35); border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .passport-banner-icon { font-size: 22px; flex-shrink: 0; }
+        .passport-banner-body { flex: 1; min-width: 0; }
+        .passport-banner-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #818cf8; font-weight: 700; margin-bottom: 2px; }
+        .passport-banner-text { font-size: 13px; color: #c7d2fe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .passport-banner-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+        .btn-jd-panel { background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.35); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.3s; white-space: nowrap; }
+        .btn-jd-panel:hover { background: rgba(99,102,241,0.28); }
+
+        /* ── JD side panel ── */
+        .jd-panel { background: rgba(99,102,241,0.07); border: 1px solid rgba(99,102,241,0.25); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        .jd-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .jd-panel-title { font-size: 13px; font-weight: 700; color: #818cf8; text-transform: uppercase; letter-spacing: 1px; }
+        .jd-panel-text { font-size: 12px; color: #94a3b8; line-height: 1.6; max-height: 180px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(99,102,241,0.2); border-radius: 6px; padding: 10px; background: rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
@@ -148,6 +164,28 @@
 
         <!-- Status bar -->
         <div id="statusBar" class="status-bar status-info hidden"></div>
+
+        <!-- Passport context banner (shown when launched from boarding pass) -->
+        <div id="passportBanner" class="passport-banner hidden">
+            <span class="passport-banner-icon">&#x1F6C2;</span>
+            <div class="passport-banner-body">
+                <div class="passport-banner-title">Boarding Documents Loaded</div>
+                <div class="passport-banner-text" id="passportBannerText">Resume and job description from your boarding pass are ready.</div>
+            </div>
+            <div class="passport-banner-actions">
+                <button class="btn-jd-panel" onclick="toggleJDPanel()" id="jdToggleBtn">&#x1F4CB; View JD</button>
+                <button class="btn-export-sm" onclick="applyPassportResume()" id="applyPassportBtn">&#x21A9; Load Resume</button>
+            </div>
+        </div>
+
+        <!-- JD panel (expandable) -->
+        <div id="jdPanel" class="jd-panel hidden">
+            <div class="jd-panel-header">
+                <span class="jd-panel-title">&#x1F4CB; Target Job Description</span>
+                <button onclick="toggleJDPanel()" style="color:#64748b;font-size:18px;cursor:pointer;background:none;border:none;">&times;</button>
+            </div>
+            <div class="jd-panel-text" id="jdPanelText"></div>
+        </div>
 
         <!-- Resume title bar (shown when loaded from Career Navigator) -->
         <div id="resumeTitleBar" class="hidden glass rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
@@ -305,10 +343,17 @@ let hasUnsavedChanges = false;
 let importFileContent = null;   // raw text from file upload
 let importFileType    = null;   // 'text' | 'json'
 
+// Passport context (set when launched from OnboardingPassport via URL params)
+let passportResumeId  = null;   // base44 Resume entity ID
+let passportJdId      = null;   // base44 JobDescription entity ID
+let passportJdRaw     = null;   // raw JD text (from ?jd= param or fetched)
+let passportResumeData = null;  // fetched Resume entity
+
 // ============================================================
 // CAREER NAVIGATOR INTEGRATION — URL param + base44 fetch/save
 // ============================================================
-const BASE44_API = 'https://api.base44.com/api/apps/67912f60b0c40c4f1a48d1c7/entities/Resume';
+const BASE44_API     = 'https://api.base44.com/api/apps/67912f60b0c40c4f1a48d1c7/entities/Resume';
+const BASE44_JD_API  = 'https://api.base44.com/api/apps/67912f60b0c40c4f1a48d1c7/entities/JobDescription';
 
 function getAuthToken() {
     const keys = ['base44_token', 'auth_token', 'access_token', 'token'];
@@ -1107,13 +1152,116 @@ function heuristicParseResume(text) {
 }
 
 // ============================================================
+// PASSPORT CONTEXT — launched from OnboardingPassport
+// ============================================================
+// URL params the boarding pass screen passes:
+//   ?passportResumeId=<base44 Resume ID>
+//   &passportJdId=<base44 JobDescription ID>
+//   &jd=<url-encoded raw JD text>   (optional fast-path, avoids extra fetch)
+//   &resumeId=<base44 Resume ID>    (existing Career Navigator param, still works)
+
+async function initPassportContext(params) {
+    passportResumeId = params.get('passportResumeId');
+    passportJdId     = params.get('passportJdId');
+    const jdEncoded  = params.get('jd');
+
+    if (!passportResumeId && !passportJdId) return; // not a passport launch
+
+    // Show the banner immediately
+    document.getElementById('passportBanner').classList.remove('hidden');
+
+    // ── 1. Resolve JD text ──────────────────────────────────────
+    if (jdEncoded) {
+        passportJdRaw = decodeURIComponent(jdEncoded);
+    } else if (passportJdId) {
+        try {
+            const token   = getAuthToken();
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            const res = await fetch(BASE44_JD_API + '/' + passportJdId, { headers });
+            if (res.ok) {
+                const jd  = await res.json();
+                passportJdRaw = jd.description_text || jd.raw_text || '';
+            }
+        } catch (e) { console.warn('[passport] JD fetch failed:', e); }
+    }
+
+    if (passportJdRaw) {
+        document.getElementById('jdPanelText').textContent = passportJdRaw;
+        document.getElementById('jdToggleBtn').style.display = '';
+    } else {
+        document.getElementById('jdToggleBtn').style.display = 'none';
+    }
+
+    // ── 2. Fetch resume entity ──────────────────────────────────
+    if (passportResumeId) {
+        try {
+            const token   = getAuthToken();
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            const res = await fetch(BASE44_API + '/' + passportResumeId, { headers });
+            if (res.ok) {
+                passportResumeData = await res.json();
+            }
+        } catch (e) { console.warn('[passport] Resume fetch failed:', e); }
+    }
+
+    // ── 3. Update banner text ───────────────────────────────────
+    const resumeName = passportResumeData?.name || passportResumeData?.personal_info?.full_name || 'your resume';
+    const jdSnippet  = passportJdRaw ? passportJdRaw.slice(0, 80).replace(/\n/g, ' ') + '…' : 'job description attached';
+    document.getElementById('passportBannerText').textContent =
+        'Resume: ' + resumeName + '  ·  JD: ' + jdSnippet;
+
+    // ── 4. Auto-load the resume into the editor ─────────────────
+    if (passportResumeData) {
+        applyPassportResume();
+    } else if (passportResumeId) {
+        // Resume entity exists in base44 but we couldn't fetch it (auth issue)
+        // Fall back to the standard resumeId path
+        currentResumeId = passportResumeId;
+        loadResumeFromCareerNavigator(passportResumeId);
+    }
+}
+
+function applyPassportResume() {
+    if (passportResumeData) {
+        populateFormFromResume(passportResumeData);
+        showStatus('success', 'Boarding documents loaded — resume pre-filled from your passport.');
+        setTimeout(() => hideStatus(), 4000);
+    } else if (passportResumeId) {
+        currentResumeId = passportResumeId;
+        loadResumeFromCareerNavigator(passportResumeId);
+    } else {
+        showStatus('info', 'No resume data found in passport context.');
+        setTimeout(() => hideStatus(), 3000);
+    }
+}
+
+function toggleJDPanel() {
+    const panel = document.getElementById('jdPanel');
+    const btn   = document.getElementById('jdToggleBtn');
+    if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        btn.textContent = '\u{1F4CB} Hide JD';
+    } else {
+        panel.classList.add('hidden');
+        btn.textContent = '\u{1F4CB} View JD';
+    }
+}
+
+// ============================================================
 // INIT
 // ============================================================
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
     const params   = new URLSearchParams(window.location.search);
     const resumeId = params.get('resumeId');
 
-    if (resumeId) {
+    // Check for passport context first (takes priority over plain resumeId)
+    const hasPassport = params.get('passportResumeId') || params.get('passportJdId');
+
+    if (hasPassport) {
+        await initPassportContext(params);
+    } else if (resumeId) {
         currentResumeId = resumeId;
         loadResumeFromCareerNavigator(resumeId);
     } else {
